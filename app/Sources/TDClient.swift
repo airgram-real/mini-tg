@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Bridge to TDLib JSON interface (new client-id API from TDLibFramework).
 final class TDClient {

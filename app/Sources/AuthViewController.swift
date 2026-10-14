@@ -14,7 +14,7 @@ final class AuthViewController: UIViewController, UITextFieldDelegate {
     private let subtitleLabel = UILabel()
     private let textField = UITextField()
     private let nextButton = UIButton(type: .system)
-    private let spinner = UIActivityIndicatorView(style: .medium)
+    private let spinner = UIActivityIndicatorView(style: .gray)
 
     override func viewDidLoad() {
         super.viewDidLoad()

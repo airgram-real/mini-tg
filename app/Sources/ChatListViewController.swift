@@ -113,17 +113,15 @@ final class ChatListViewController: UITableViewController {
     func displayTitle(chat: [String: Any]) -> String {
         let type = tdString(tdDict(chat["type"])?["@type"])
         if type == "chatTypePrivate" || type == "chatTypeSecret" {
-            let info = tdDict(chat["user_id"]) // ignored
-            _ = info
             // fetch user
             let userId = tdInt(chat["user_id"])
             if let user = UserCache.shared.user(id: userId) {
                 return Self.userTitle(user)
             }
-            UserCache.shared.fetchUser(id: userId) { [weak self] in
+            UserCache.shared.fetchUser(id: userId) { [weak self] user in
                 DispatchQueue.main.async {
                     guard var entry = self?.chats[tdInt(chat["id"])] else { return }
-                    entry.title = Self.userTitle($0)
+                    entry.title = Self.userTitle(user)
                     self?.chats[tdInt(chat["id"])] = entry
                     self?.resort()
                 }

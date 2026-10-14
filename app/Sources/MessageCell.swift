@@ -22,7 +22,7 @@ final class MessageCell: UITableViewCell {
     private let metaLabel = UILabel()
     private let imageViewInternal = UIImageView()
     private let fileButton = UIButton(type: .system)
-    private let activity = UIActivityIndicatorView(style: .medium)
+    private let activity = UIActivityIndicatorView(style: .gray)
     private var entry: MessageEntry?
     private var onFileTap: ((MessageEntry) -> Void)?
 

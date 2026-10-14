@@ -16,7 +16,7 @@ struct MessageEntry {
 }
 
 final class DialogViewController: UIViewController, UITableViewDataSource, UITableViewDelegate,
-                                 UITextFieldDelegate, UINavigationControllerDelegate {
+                                 UITextFieldDelegate, UIDocumentPickerDelegate {
     private let chatId: Int64
     private let chatTitle: String
 
@@ -121,13 +121,11 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         case "messagePhoto":
             let photo = tdDict(content["photo"])
             var best: [String: Any]? = nil
-            var bestArea = 0
+            var bestArea: Int64 = 0
             for size in tdArray(photo?["sizes"]) {
-                if tdString(size["@type"]) == "photoSize" || tdString(size["@type"]) == "photoStrippedSize" {
-                    if tdString(size["@type"]) == "photoSize" {
-                        let area = tdInt(size["width"]) * tdInt(size["height"])
-                        if area > bestArea { bestArea = area; best = size }
-                    }
+                if tdString(size["@type"]) == "photoSize" {
+                    let area = tdInt(size["width"]) * tdInt(size["height"])
+                    if area > bestArea { bestArea = area; best = size }
                 }
             }
             let fileId = tdInt(best?["photo"])
@@ -138,13 +136,12 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
                                 date: date)
         case "messageDocument":
             let doc = tdDict(content["document"])
-            let fileName = tdString(tdDict(doc?["file_name"]) ?? ["value": "file"] as [String: Any])
+            let file = tdDict(doc?["file"])
             let name = doc?["file_name"] as? String ?? "file"
-            _ = fileName
             return MessageEntry(id: id, senderId: sender, isOut: isOut, text: "",
-                                kind: .document(fileId: tdInt(doc?["file"]["id"]),
+                                kind: .document(fileId: tdInt(file?["id"]),
                                                 name: name,
-                                                size: Int(tdInt(doc?["file"]["size"]))),
+                                                size: Int(tdInt(file?["size"]))),
                                 date: date)
         default:
             return MessageEntry(id: id, senderId: sender, isOut: isOut,
@@ -266,7 +263,7 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
 
     @objc private func attachTapped() {
         let picker = UIDocumentPickerViewController(documentTypes: ["public.item"], in: .import)
-        picker.delegate = self as UIDocumentPickerDelegate
+        picker.delegate = self
         picker.allowsMultipleSelection = false
         present(picker, animated: true)
     }

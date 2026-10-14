@@ -41,7 +41,7 @@ final class AppState {
     private func showLoading() {
         let vc = UIViewController()
         vc.view.backgroundColor = .tgBlue
-        let spinner = UIActivityIndicatorView(style: .large)
+        let spinner = UIActivityIndicatorView(style: .whiteLarge)
         spinner.color = .white
         spinner.translatesAutoresizingMaskIntoConstraints = false
         spinner.startAnimating()
@@ -54,7 +54,6 @@ final class AppState {
     }
 
     private func wireUpdates() {
-        var sawTerminalState = false
         TDClient.shared.onUpdate = { [weak self] update in
             guard let self = self else { return }
             let type = tdString(update["@type"])
@@ -77,7 +76,6 @@ final class AppState {
                 break
             }
         }
-        _ = sawTerminalState
     }
 
     private func handleAuthState(_ state: [String: Any]?) {
