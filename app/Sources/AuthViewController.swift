@@ -10,75 +10,184 @@ final class AuthViewController: UIViewController, UITextFieldDelegate {
     var stage: AuthStage = .phone
     var phoneNumber: String = ""
 
+    private let gradientLayer = CAGradientLayer()
+
+    private let brandLabel = UILabel()
+    private let brandSubtitle = UILabel()
+
+    private let cardView = UIView()
     private let titleLabel = UILabel()
     private let subtitleLabel = UILabel()
     private let textField = UITextField()
     private let nextButton = UIButton(type: .system)
-    private let spinner = UIActivityIndicatorView(style: .gray)
+    private let spinner = UIActivityIndicatorView(style: .white)
+    private let themeButton = UIButton(type: .system)
+
+    private var cardCenterConstraint: NSLayoutConstraint!
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
-        navigationItem.title = "MiniTG"
+        setupGradient()
+        setupUI()
+        applyStage()
 
-        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+        NotificationCenter.default.addObserver(forName: .themeChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.applyStage()
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(kbShow(_:)),
+                                               name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(kbHide(_:)),
+                                               name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        gradientLayer.frame = view.bounds
+    }
+
+    private func setupGradient() {
+        gradientLayer.colors = [UIColor(hex: 0x2AABEE).cgColor, UIColor(hex: 0x1C86B8).cgColor]
+        gradientLayer.startPoint = CGPoint(x: 0.3, y: 0)
+        gradientLayer.endPoint = CGPoint(x: 0.7, y: 1)
+        view.layer.addSublayer(gradientLayer)
+    }
+
+    private func setupUI() {
+        // Brand header
+        brandLabel.text = "MiniTG"
+        brandLabel.font = .systemFont(ofSize: 40, weight: .bold)
+        brandLabel.textColor = .white
+        brandLabel.textAlignment = .center
+        brandLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(brandLabel)
+
+        brandSubtitle.text = "Minimal Telegram client.\nJust your chats — nothing else."
+        brandSubtitle.font = .systemFont(ofSize: 14)
+        brandSubtitle.textColor = UIColor.white.withAlphaComponent(0.85)
+        brandSubtitle.textAlignment = .center
+        brandSubtitle.numberOfLines = 0
+        brandSubtitle.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(brandSubtitle)
+
+        // Card
+        cardView.layer.cornerRadius = 18
+        cardView.layer.shadowColor = UIColor.black.cgColor
+        cardView.layer.shadowOpacity = 0.25
+        cardView.layer.shadowRadius = 16
+        cardView.layer.shadowOffset = CGSize(width: 0, height: 6)
+        cardView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(cardView)
+
+        titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
         titleLabel.textAlignment = .center
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(titleLabel)
+        cardView.addSubview(titleLabel)
 
-        subtitleLabel.font = .systemFont(ofSize: 14)
-        subtitleLabel.textColor = .darkGray
+        subtitleLabel.font = .systemFont(ofSize: 13)
         subtitleLabel.textAlignment = .center
         subtitleLabel.numberOfLines = 0
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(subtitleLabel)
+        cardView.addSubview(subtitleLabel)
 
         textField.borderStyle = .roundedRect
         textField.keyboardType = .phonePad
         textField.autocorrectionType = .no
         textField.textAlignment = .center
-        textField.font = .systemFont(ofSize: 18)
-        textField.delegate = self
+        textField.font = .systemFont(ofSize: 17)
+        textField.backgroundColor = .fieldBackground
+        textField.textColor = .text
         textField.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(textField)
+        cardView.addSubview(textField)
 
-        nextButton.setTitle("Next", for: .normal)
-        nextButton.backgroundColor = .tgBlue
+        nextButton.setTitle("Continue", for: .normal)
+        nextButton.backgroundColor = .accent
         nextButton.setTitleColor(.white, for: .normal)
-        nextButton.layer.cornerRadius = 10
+        nextButton.layer.cornerRadius = 12
         nextButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
         nextButton.translatesAutoresizingMaskIntoConstraints = false
         nextButton.addTarget(self, action: #selector(nextTapped), for: .touchUpInside)
-        view.addSubview(nextButton)
+        cardView.addSubview(nextButton)
 
         spinner.hidesWhenStopped = true
         spinner.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(spinner)
+        cardView.addSubview(spinner)
+
+        // Theme toggle
+        themeButton.setTitle(Theme.dark ? "\u{2600}\u{FE0F}" : "\u{1F319}", for: .normal)
+        themeButton.titleLabel?.font = .systemFont(ofSize: 26)
+        themeButton.translatesAutoresizingMaskIntoConstraints = false
+        themeButton.addTarget(self, action: #selector(toggleTheme), for: .touchUpInside)
+        view.addSubview(themeButton)
+
+        let cardWidth: CGFloat = min(340, UIScreen.main.bounds.width - 48)
+        cardCenterConstraint = cardView.centerYAnchor.constraint(equalTo: view.centerYAnchor)
 
         NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 60),
-            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            brandLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            brandLabel.bottomAnchor.constraint(equalTo: cardView.topAnchor, constant: -56),
 
-            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            subtitleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            brandSubtitle.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            brandSubtitle.topAnchor.constraint(equalTo: brandLabel.bottomAnchor, constant: 6),
 
-            textField.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 32),
-            textField.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            textField.widthAnchor.constraint(equalToConstant: 320),
-            textField.heightAnchor.constraint(equalToConstant: 48),
+            cardView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            cardCenterConstraint,
+            cardView.widthAnchor.constraint(equalToConstant: cardWidth),
 
-            nextButton.topAnchor.constraint(equalTo: textField.bottomAnchor, constant: 20),
-            nextButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            nextButton.widthAnchor.constraint(equalToConstant: 320),
-            nextButton.heightAnchor.constraint(equalToConstant: 48)
+            titleLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 22),
+            titleLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -20),
+
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
+            subtitleLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 20),
+            subtitleLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -20),
+
+            textField.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 18),
+            textField.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 20),
+            textField.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -20),
+            textField.heightAnchor.constraint(equalToConstant: 46),
+
+            nextButton.topAnchor.constraint(equalTo: textField.bottomAnchor, constant: 16),
+            nextButton.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 20),
+            nextButton.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -20),
+            nextButton.heightAnchor.constraint(equalToConstant: 48),
+            nextButton.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -20),
+
+            spinner.centerXAnchor.constraint(equalTo: nextButton.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: nextButton.centerYAnchor),
+
+            themeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            themeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16)
         ])
-
-        applyStage()
     }
 
-    private func applyStage() {
+    @objc private func toggleTheme() {
+        Theme.setDark(!Theme.dark)
+    }
+
+    @objc private func kbShow(_ n: Notification) {
+        guard let frame = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        let overflow = (view.bounds.height + 56) - frame.origin.y
+        cardCenterConstraint.constant = overflow > 0 ? -overflow / 2 : 0
+        UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
+    @objc private func kbHide(_ n: Notification) {
+        cardCenterConstraint.constant = 0
+        UIView.animate(withDuration: 0.25) { self.view.layoutIfNeeded() }
+    }
+
+    func applyStage() {
+        cardView.backgroundColor = .card
+        titleLabel.textColor = .text
+        subtitleLabel.textColor = .subText
+        textField.textColor = .text
+        textField.backgroundColor = .fieldBackground
+        themeButton.setTitle(Theme.dark ? "\u{2600}\u{FE0F}" : "\u{1F319}", for: .normal)
+
         switch stage {
         case .phone:
             titleLabel.text = "Your phone number"
@@ -86,22 +195,20 @@ final class AuthViewController: UIViewController, UITextFieldDelegate {
             textField.placeholder = "+7 900 000-00-00"
             textField.keyboardType = .phonePad
             textField.isSecureTextEntry = false
-            textField.text = ""
         case .code:
             titleLabel.text = "Enter code"
             subtitleLabel.text = "We sent a code to \(phoneNumber). Check your Telegram app."
             textField.placeholder = "Code"
             textField.keyboardType = .numberPad
             textField.isSecureTextEntry = false
-            textField.text = ""
         case .password:
             titleLabel.text = "Cloud password"
-            subtitleLabel.text = "Your account is protected with a two-step verification password."
+            subtitleLabel.text = "Your account is protected with two-step verification."
             textField.placeholder = "Password"
             textField.keyboardType = .default
             textField.isSecureTextEntry = true
-            textField.text = ""
         }
+        textField.text = ""
         nextButton.isEnabled = true
         spinner.stopAnimating()
     }
@@ -111,12 +218,28 @@ final class AuthViewController: UIViewController, UITextFieldDelegate {
         return true
     }
 
+    private func showError(_ message: String) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
     @objc private func nextTapped() {
         view.endEditing(true)
         let value = textField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !value.isEmpty else { return }
         nextButton.isEnabled = false
         spinner.startAnimating()
+
+        let onFail: ([String: Any]) -> Void = { [weak self] resp in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                let msg = tdString(resp["message"])
+                self.showError(msg.isEmpty ? "Something went wrong" : msg)
+                self.spinner.stopAnimating()
+                self.nextButton.isEnabled = true
+            }
+        }
 
         switch stage {
         case .phone:
@@ -128,23 +251,27 @@ final class AuthViewController: UIViewController, UITextFieldDelegate {
                 "phone_number": phone,
                 "allow_flash_call": false,
                 "is_current_phone_number": true
-            ])
+            ]) { resp in
+                if tdString(resp["@type"]) == "error" { onFail(resp) }
+            }
         case .code:
             TDClient.shared.send([
                 "@type": "checkAuthenticationCode",
                 "code": value
-            ])
+            ]) { resp in
+                if tdString(resp["@type"]) == "error" { onFail(resp) }
+            }
         case .password:
             TDClient.shared.send([
                 "@type": "checkAuthenticationPassword",
                 "password": value
-            ])
+            ]) { resp in
+                if tdString(resp["@type"]) == "error" { onFail(resp) }
+            }
         }
-        // On success, updateAuthorizationState moves us forward.
-        // On failure, show error via generic error handling below.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        // Success moves us via updateAuthorizationState -> AppDelegate.showAuth
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self = self, !self.nextButton.isEnabled else { return }
-            // If state didn't change, re-enable
             self.spinner.stopAnimating()
             self.nextButton.isEnabled = true
         }

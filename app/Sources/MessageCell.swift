@@ -96,8 +96,11 @@ final class MessageCell: UITableViewCell {
                    senderTitle: @escaping (Int64) -> String?) {
         self.entry = entry
         let isOut = entry.isOut
-        bubble.backgroundColor = isOut ? .tgOutgoing : .tgIncoming
-        textLabelInternal.textColor = .black
+        bubble.backgroundColor = isOut ? .bubbleOut : .bubbleIn
+        textLabelInternal.textColor = .text
+        metaLabel.textColor = isOut
+            ? UIColor(hex: 0x4FAE4E).withAlphaComponent(0.7)
+            : UIColor(white: 0, alpha: 0.4).withAlphaComponent(Theme.dark ? 0.7 : 0.4)
         metaLabel.text = timeString(entry.date)
 
         // out/in alignment

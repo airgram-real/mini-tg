@@ -44,8 +44,9 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .tgBackground
+        view.backgroundColor = .background
         title = chatTitle
+        navigationController?.navigationBar.barTintColor = .navTint
 
         setupTable()
         setupInputBar()
@@ -169,12 +170,13 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
     }
 
     private func setupInputBar() {
-        inputBar.backgroundColor = .white
+        inputBar.backgroundColor = .card
         inputBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(inputBar)
 
         attachButton.setTitle("\u{1F4CE}", for: .normal)
         attachButton.titleLabel?.font = .systemFont(ofSize: 24)
+        attachButton.tintColor = .accent
         attachButton.addTarget(self, action: #selector(attachTapped), for: .touchUpInside)
         attachButton.translatesAutoresizingMaskIntoConstraints = false
         inputBar.addSubview(attachButton)
@@ -183,11 +185,13 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         inputField.placeholder = "Message"
         inputField.font = .systemFont(ofSize: 16)
         inputField.delegate = self
+        inputField.backgroundColor = .fieldBackground
+        inputField.textColor = .text
         inputField.translatesAutoresizingMaskIntoConstraints = false
         inputBar.addSubview(inputField)
 
         sendButton.setTitle("Send", for: .normal)
-        sendButton.setTitleColor(.tgBlue, for: .normal)
+        sendButton.setTitleColor(.accent, for: .normal)
         sendButton.titleLabel?.font = .boldSystemFont(ofSize: 16)
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
         sendButton.translatesAutoresizingMaskIntoConstraints = false

@@ -116,15 +116,18 @@ final class AppState {
             if let existing = window.rootViewController as? UINavigationController,
                let auth = existing.viewControllers.first as? AuthViewController {
                 configure(auth)
+                auth.applyStage()
                 return
             }
             let auth = AuthViewController()
             let nav = UINavigationController(rootViewController: auth)
-            nav.navigationBar.barTintColor = .tgBlue
+            nav.isNavigationBarHidden = true
+            nav.navigationBar.barTintColor = .clear
             nav.navigationBar.tintColor = .white
             nav.navigationBar.titleTextAttributes = [.foregroundColor: UIColor.white]
             window.rootViewController = nav
             configure(auth)
+            auth.applyStage()
         }
     }
 

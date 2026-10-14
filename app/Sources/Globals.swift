@@ -51,3 +51,80 @@ func tdArray(_ v: Any?) -> [[String: Any]] {
     }
     return []
 }
+
+// MARK: - Theme
+
+extension Notification.Name {
+    static let themeChanged = Notification.Name("themeChanged")
+}
+
+enum Theme {
+    static var dark: Bool {
+        UserDefaults.standard.bool(forKey: "darkMode")
+    }
+    static func setDark(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: "darkMode")
+        NotificationCenter.default.post(name: .themeChanged, object: nil)
+    }
+
+    static var background: UIColor { dark ? UIColor(hex: 0x17212B) : UIColor(hex: 0xF4F4F5) }
+    static var card: UIColor { dark ? UIColor(hex: 0x232E3C) : .white }
+    static var text: UIColor { dark ? .white : .black }
+    static var subText: UIColor { dark ? UIColor(hex: 0x8A9AA9) : .darkGray }
+    static var accent: UIColor { .tgBlue }
+    static var fieldBackground: UIColor { dark ? UIColor(hex: 0x2B3A4C) : UIColor(hex: 0xF1F1F3) }
+    static var bubbleOut: UIColor { dark ? UIColor(hex: 0x2B5278) : .tgOutgoing }
+    static var bubbleIn: UIColor { dark ? UIColor(hex: 0x232E3C) : .tgIncoming }
+    static var navTint: UIColor { dark ? UIColor(hex: 0x17212B) : .tgBlue }
+}
+
+// MARK: - File loader (images)
+
+final class FileLoader {
+    static let shared = FileLoader()
+
+    private var requested = Set<Int64>()
+    private var cache: [Int64: UIImage] = [:]
+    private var completions: [Int64: [(UIImage?) -> Void]] = [:]
+    private var listening = false
+
+    func load(fileId: Int64, completion: @escaping (UIImage?) -> Void) {
+        if fileId == 0 { completion(nil); return }
+        if let img = cache[fileId] {
+            completion(img)
+            return
+        }
+        listen()
+        completions[fileId, default: []].append(completion)
+        guard !requested.contains(fileId) else { return }
+        requested.insert(fileId)
+        TDClient.shared.send([
+            "@type": "downloadFile",
+            "file_id": fileId,
+            "priority": 1,
+            "offset": 0,
+            "limit": 0,
+            "synchronous": false
+        ])
+    }
+
+    private func listen() {
+        guard !listening else { return }
+        listening = true
+        NotificationCenter.default.addObserver(forName: .tdUpdate, object: nil, queue: .main) { [weak self] note in
+            guard let self = self,
+                  let update = note.object as? [String: Any],
+                  tdString(update["@type"]) == "updateFile",
+                  let file = tdDict(update["file"]),
+                  let local = tdDict(file["local"]),
+                  (local["is_downloading_completed"] as? Bool) == true,
+                  let path = local["path"] as? String,
+                  let img = UIImage(contentsOfFile: path) else { return }
+            let fileId = tdInt(file["id"])
+            self.cache[fileId] = img
+            let cbs = self.completions[fileId] ?? []
+            self.completions[fileId] = []
+            for cb in cbs { cb(img) }
+        }
+    }
+}

@@ -21,6 +21,9 @@ final class ChatListViewController: UITableViewController {
         title = "Chats"
         tableView.register(ChatCell.self, forCellReuseIdentifier: cellId)
         tableView.separatorInset = UIEdgeInsets(top: 0, left: 70, bottom: 0, right: 0)
+        view.backgroundColor = .background
+        tableView.backgroundColor = .background
+        navigationController?.navigationBar.barTintColor = .navTint
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Me",
                                                             style: .plain,
@@ -288,6 +291,10 @@ final class ChatCell: UITableViewCell {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ entry: ChatEntry) {
+        contentView.backgroundColor = .background
+        backgroundColor = .background
+        titleLabel.textColor = .text
+        messageLabel.textColor = .subText
         titleLabel.text = entry.title
         var preview = entry.lastMessagePreview
         if entry.lastMessageIsOut && !preview.isEmpty {
