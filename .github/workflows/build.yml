@@ -1,0 +1,35 @@
+name: Build MiniTG
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 350
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja gperf php || true
+
+      - name: Build TDLib for iOS (arm64)
+        run: |
+          chmod +x tdlib/build-td-ios.sh
+          bash tdlib/build-td-ios.sh
+
+      - name: Build app and package IPA
+        run: |
+          chmod +x build-app.sh
+          bash build-app.sh
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniTG-ipa
+          path: MiniTG.ipa
+          if-no-files-found: error
