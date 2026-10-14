@@ -19,6 +19,17 @@ extension UIColor {
     static let tgOutgoing = UIColor(hex: 0xEEFFDE)
     static let tgIncoming = UIColor.white
     static let tgBackground = UIColor(hex: 0xF0F0F0)
+
+    // Theme-forwarding shortcuts so `.text` etc. resolve on UIColor
+    static var background: UIColor { Theme.background }
+    static var card: UIColor { Theme.card }
+    static var text: UIColor { Theme.text }
+    static var subText: UIColor { Theme.subText }
+    static var accent: UIColor { Theme.accent }
+    static var fieldBackground: UIColor { Theme.fieldBackground }
+    static var bubbleOut: UIColor { Theme.bubbleOut }
+    static var bubbleIn: UIColor { Theme.bubbleIn }
+    static var navTint: UIColor { Theme.navTint }
 }
 
 func tdInt(_ v: Any?) -> Int64 {
