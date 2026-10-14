@@ -125,7 +125,7 @@ final class ProfileViewController: UIViewController {
               let photo = tdDict(me["profile_photo"]),
               let big = tdDict(photo["big"]) else { return }
         let fileId = tdInt(big["id"])
-        FileLoader.shared.load(fileId: fileId) { [weak self] img in
+        FileLoader.shared.loadImage(fileId: fileId) { [weak self] img in
             DispatchQueue.main.async {
                 if let img = img { self?.avatarView.image = img }
             }

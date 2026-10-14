@@ -32,9 +32,6 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
     private let attachButton = UIButton(type: .system)
     private var bottomConstraint: NSLayoutConstraint!
 
-    private var fileDownloads: [Int64: Int] = [:]
-    private var loadedLocalFiles: [Int64: String] = [:]
-    private var photoDownloads: Set<Int64> = []
     private let cellId = "MsgCell"
     private let emptyLabel = UILabel()
 
@@ -78,6 +75,7 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
 
     private func loadHistory() {
         emptyLabel.text = "Loading..."
+        var retryDone = false
         TDClient.shared.send([
             "@type": "getChatHistory",
             "chat_id": chatId,
@@ -85,25 +83,45 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         ]) { [weak self] resp in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                if tdString(resp["@type"]) == "error" {
-                    self.emptyLabel.text = "Error: " + tdString(resp["message"])
-                    return
+                self.applyHistoryResponse(resp)
+                if self.messages.isEmpty && !retryDone {
+                    retryDone = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                        guard let self = self, self.messages.isEmpty else { return }
+                        TDClient.shared.send([
+                            "@type": "getChatHistory",
+                            "chat_id": self.chatId,
+                            "from_message_id": 0,
+                            "offset": 0,
+                            "limit": 60,
+                            "only_local": false
+                        ]) { resp2 in
+                            DispatchQueue.main.async { self.applyHistoryResponse(resp2) }
+                        }
+                    }
                 }
-                let msgs = tdArray(resp["messages"])
-                var entries: [MessageEntry] = []
-                for m in msgs {
-                    if let e = Self.parse(m) { entries.append(e) }
-                }
-                entries.reverse()
-                for e in entries where !self.knownIds.contains(e.id) {
-                    self.knownIds.insert(e.id)
-                    self.messages.append(e)
-                }
-                self.emptyLabel.text = self.messages.isEmpty ? "No messages yet" : ""
-                self.tableView.reloadData()
-                self.scrollToBottom()
             }
         }
+    }
+
+    private func applyHistoryResponse(_ resp: [String: Any]) {
+        if tdString(resp["@type"]) == "error" {
+            emptyLabel.text = "Error: " + tdString(resp["message"])
+            return
+        }
+        let msgs = tdArray(resp["messages"])
+        var entries: [MessageEntry] = []
+        for m in msgs {
+            if let e = Self.parse(m) { entries.append(e) }
+        }
+        entries.reverse()
+        for e in entries where !knownIds.contains(e.id) {
+            knownIds.insert(e.id)
+            messages.append(e)
+        }
+        emptyLabel.text = messages.isEmpty ? "No messages yet" : ""
+        tableView.reloadData()
+        scrollToBottom()
     }
 
     static func parse(_ m: [String: Any]) -> MessageEntry? {
@@ -274,7 +292,7 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         guard let text = inputField.text?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty else { return }
         inputField.text = ""
-        TDClient.shared.send([
+        sendWithAlert([
             "@type": "sendMessage",
             "chat_id": chatId,
             "input_message_content": [
@@ -282,6 +300,26 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
                 "text": ["@type": "formattedText", "text": text]
             ]
         ])
+    }
+
+    /// Sends request; surfaces TDLib errors as an alert.
+    private func sendWithAlert(_ request: [String: Any], restoreText: String? = nil) {
+        TDClient.shared.send(request) { [weak self] resp in
+            guard let self = self else { return }
+            if tdString(resp["@type"]) == "error" {
+                DispatchQueue.main.async {
+                    let msg = tdString(resp["message"])
+                    let alert = UIAlertController(title: "Not sent",
+                                                  message: msg.isEmpty ? "Unknown error" : msg,
+                                                  preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(alert, animated: true)
+                    if let restoreText = restoreText {
+                        self.inputField.text = restoreText
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Attach
@@ -297,7 +335,10 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         })
         sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         // iPad popover anchor
-        sheet.popoverPresentationController?.sourceView = attachButton
+        if let pop = sheet.popoverPresentationController {
+            pop.sourceView = attachButton
+            pop.sourceRect = attachButton.bounds
+        }
         present(sheet, animated: true)
     }
 
@@ -323,7 +364,7 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
            let data = image.jpegData(compressionQuality: 0.85) {
             let path = FileManager.default.temporaryDirectory.appendingPathComponent("photo_\(Int(Date().timeIntervalSince1970)).jpg")
             try? data.write(to: path)
-            TDClient.shared.send([
+            sendWithAlert([
                 "@type": "sendMessage",
                 "chat_id": chatId,
                 "input_message_content": [
@@ -337,7 +378,7 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
             try? FileManager.default.removeItem(at: tmp)
             try? FileManager.default.copyItem(at: url, to: tmp)
-            TDClient.shared.send([
+            sendWithAlert([
                 "@type": "sendMessage",
                 "chat_id": chatId,
                 "input_message_content": [
@@ -357,7 +398,7 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         try? FileManager.default.removeItem(at: tmp)
         try? FileManager.default.copyItem(at: url, to: tmp)
 
-        TDClient.shared.send([
+        sendWithAlert([
             "@type": "sendMessage",
             "chat_id": chatId,
             "input_message_content": [
@@ -385,40 +426,15 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
             let ids = tdArray(update["message_ids"]).map { tdInt($0) }
             messages.removeAll { knownIds.contains($0.id) && ids.contains($0.id) }
             tableView.reloadData()
-        case "updateFile":
-            handleFileUpdate(update)
         default:
             break
         }
     }
 
-    // MARK: - File download
-
-    private func downloadFile(fileId: Int64) {
-        fileDownloads[fileId] = 1
-        TDClient.shared.send([
-            "@type": "downloadFile",
-            "file_id": fileId,
-            "priority": 1,
-            "offset": 0,
-            "limit": 0,
-            "synchronous": false
-        ])
-    }
-
-    private func handleFileUpdate(_ update: [String: Any]) {
-        guard let file = tdDict(update["file"]) else { return }
-        let fileId = tdInt(file["id"])
-        guard fileDownloads[fileId] != nil || photoDownloads.contains(fileId) else { return }
-        let local = tdDict(file["local"])
-        if let path = local?["path"] as? String, (local?["is_downloading_completed"] as? Bool) == true {
-            loadedLocalFiles[fileId] = path
-            tableView.reloadData()
-        }
-    }
+    // MARK: - File download (via FileLoader)
 
     func localPath(for fileId: Int64) -> String? {
-        return loadedLocalFiles[fileId]
+        return FileLoader.shared.cachedPath(fileId)
     }
 
     // MARK: - Table
@@ -439,9 +455,9 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
                        localPath: { [weak self] fileId in
                            guard let self = self else { return nil }
                            if let p = self.localPath(for: fileId) { return p }
-                           if fileId != 0 && self.fileDownloads[fileId] == nil {
-                               if entry.kind.isMedia { self.photoDownloads.insert(fileId) }
-                               self.downloadFile(fileId: fileId)
+                           // kick off chunked download once; FileLoader caches + completes
+                           FileLoader.shared.requestPath(fileId: fileId) { [weak self] _ in
+                               DispatchQueue.main.async { self?.tableView.reloadData() }
                            }
                            return nil
                        },

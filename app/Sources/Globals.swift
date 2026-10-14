@@ -89,32 +89,62 @@ enum Theme {
     static var navTint: UIColor { dark ? UIColor(hex: 0x17212B) : .tgBlue }
 }
 
-// MARK: - File loader (images)
+// MARK: - File loader (chunked download, images + paths)
 
 final class FileLoader {
     static let shared = FileLoader()
 
     private var requested = Set<Int64>()
-    private var cache: [Int64: UIImage] = [:]
-    private var completions: [Int64: [(UIImage?) -> Void]] = [:]
+    private var pathCache: [Int64: String] = [:]
+    private var imgCache: [Int64: UIImage] = [:]
+    private var imgCompletions: [Int64: [(UIImage?) -> Void]] = [:]
+    private var pathCompletions: [Int64: [(String?) -> Void]] = [:]
     private var listening = false
+    private let chunkSize = 1 << 20 // 1 MB
 
-    func load(fileId: Int64, completion: @escaping (UIImage?) -> Void) {
+    func cachedPath(_ fileId: Int64) -> String? {
+        return pathCache[fileId]
+    }
+
+    /// Loads file as UIImage (with in-memory cache).
+    func loadImage(fileId: Int64, completion: @escaping (UIImage?) -> Void) {
         if fileId == 0 { completion(nil); return }
-        if let img = cache[fileId] {
+        if let img = imgCache[fileId] {
             completion(img)
             return
         }
+        requestPath(fileId: fileId) { [weak self] path in
+            guard let self = self, let path = path, let img = UIImage(contentsOfFile: path) else {
+                completion(nil)
+                return
+            }
+            self.imgCache[fileId] = img
+            completion(img)
+        }
+    }
+
+    /// Requests file download; completion receives local path (or nil on failure).
+    func requestPath(fileId: Int64, completion: @escaping (String?) -> Void) {
+        if fileId == 0 { completion(nil); return }
+        if let p = pathCache[fileId] {
+            completion(p)
+            return
+        }
         listen()
-        completions[fileId, default: []].append(completion)
+        pathCompletions[fileId, default: []].append(completion)
         guard !requested.contains(fileId) else { return }
         requested.insert(fileId)
+        // start chunked download
+        sendChunk(fileId: fileId, offset: 0)
+    }
+
+    private func sendChunk(fileId: Int64, offset: Int64) {
         TDClient.shared.send([
             "@type": "downloadFile",
             "file_id": fileId,
-            "priority": 1,
-            "offset": 0,
-            "limit": 0,
+            "priority": 16,
+            "offset": offset,
+            "limit": chunkSize,
             "synchronous": false
         ])
     }
@@ -126,16 +156,33 @@ final class FileLoader {
             guard let self = self,
                   let update = note.object as? [String: Any],
                   tdString(update["@type"]) == "updateFile",
-                  let file = tdDict(update["file"]),
-                  let local = tdDict(file["local"]),
-                  (local["is_downloading_completed"] as? Bool) == true,
-                  let path = local["path"] as? String,
-                  let img = UIImage(contentsOfFile: path) else { return }
+                  let file = tdDict(update["file"]) else { return }
             let fileId = tdInt(file["id"])
-            self.cache[fileId] = img
-            let cbs = self.completions[fileId] ?? []
-            self.completions[fileId] = []
-            for cb in cbs { cb(img) }
+            guard self.requested.contains(fileId), self.pathCache[fileId] == nil else { return }
+
+            let local = tdDict(file["local"])
+            let completed = (local?["is_downloading_completed"] as? Bool) == true
+            if completed, let path = local?["path"] as? String {
+                self.pathCache[fileId] = path
+                let pbs = self.pathCompletions[fileId] ?? []
+                self.pathCompletions[fileId] = []
+                for cb in pbs { cb(path) }
+                let ibs = self.imgCompletions[fileId] ?? []
+                self.imgCompletions[fileId] = []
+                if let img = UIImage(contentsOfFile: path) {
+                    self.imgCache[fileId] = img
+                    for cb in ibs { cb(img) }
+                } else {
+                    for cb in ibs { cb(nil) }
+                }
+                return
+            }
+            // not completed yet: request next chunk
+            let downloaded = tdInt(local?["download_offset"])
+            let expected = tdInt(file["expected_size"])
+            if expected == 0 || downloaded < expected {
+                self.sendChunk(fileId: fileId, offset: downloaded)
+            }
         }
     }
 }

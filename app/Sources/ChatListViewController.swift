@@ -515,7 +515,7 @@ final class ChatCell: UITableViewCell {
             avatarView.isHidden = true
             photoView.image = nil
             photoView.backgroundColor = .fieldBackground
-            FileLoader.shared.load(fileId: entry.photoFileId) { [weak photoView] img in
+            FileLoader.shared.loadImage(fileId: entry.photoFileId) { [weak photoView] img in
                 photoView?.image = img
                 photoView?.isHidden = img == nil
                 if img == nil { photoView?.superview?.isHidden = false }
