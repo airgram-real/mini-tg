@@ -2,6 +2,8 @@
 #ifndef TD_BRIDGE_H
 #define TD_BRIDGE_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -24,9 +24,10 @@ cd "$ROOT/third-party"
 unzip -q -o "$(basename "$FW_ZIP")"
 cd "$ROOT"
 
-FW_PATH=$(find "$ROOT/third-party" -name "TDLibFramework.framework" -path "*ios-arm64*" | head -1)
+FW_PATH=$(find "$ROOT/third-party" -path "*ios-arm64/TDLibFramework.framework" | head -1)
 if [ -z "$FW_PATH" ]; then
-  FW_PATH=$(find "$ROOT/third-party" -name "TDLibFramework.framework" | grep -v simulator | head -1)
+  # fallback: exclude simulator slices explicitly
+  FW_PATH=$(find "$ROOT/third-party" -name "TDLibFramework.framework" | grep -v -E "simulator|catalyst|maccatalyst" | head -1)
 fi
 if [ -z "$FW_PATH" ]; then
   echo "ERROR: TDLibFramework.framework (device slice) not found" >&2
