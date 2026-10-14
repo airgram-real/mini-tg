@@ -49,6 +49,7 @@ xcrun -sdk iphoneos swiftc \
   -import-objc-header "$APP_DIR/TD-Bridge.h" \
   -F "$FW_DIR" \
   -framework TDLibFramework \
+  -lz -lc++ \
   -Xlinker -rpath -Xlinker @executable_path/Frameworks \
   $(find "$APP_DIR/Sources" -name "*.swift") \
   -o "$WORK/$APP_NAME.app/$APP_NAME"
