@@ -1,4 +1,5 @@
 import UIKit
+import MobileCoreServices
 
 struct MessageEntry {
     var id: Int64
@@ -16,13 +17,13 @@ struct MessageEntry {
 }
 
 final class DialogViewController: UIViewController, UITableViewDataSource, UITableViewDelegate,
-                                 UITextFieldDelegate, UIDocumentPickerDelegate {
+                                 UITextFieldDelegate, UIDocumentPickerDelegate,
+                                 UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     private let chatId: Int64
     private let chatTitle: String
 
-    private var messages: [MessageEntry] = [] // oldest -> newest
+    private var messages: [MessageEntry] = []
     private var knownIds = Set<Int64>()
-    private var oldestOrder: Int64 = 0
 
     private let tableView = UITableView(frame: .zero, style: .plain)
     private let inputBar = UIView()
@@ -31,8 +32,11 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
     private let attachButton = UIButton(type: .system)
     private var bottomConstraint: NSLayoutConstraint!
 
-    private var fileDownloads: [Int64: Int] = [:] // fileId -> messageId
+    private var fileDownloads: [Int64: Int] = [:]
+    private var loadedLocalFiles: [Int64: String] = [:]
+    private var photoDownloads: Set<Int64> = []
     private let cellId = "MsgCell"
+    private let emptyLabel = UILabel()
 
     init(chatId: Int64, title: String) {
         self.chatId = chatId
@@ -73,35 +77,29 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
     // MARK: - History
 
     private func loadHistory() {
-        var req: [String: Any] = [
+        emptyLabel.text = "Loading..."
+        TDClient.shared.send([
             "@type": "getChatHistory",
             "chat_id": chatId,
-            "limit": 50
-        ]
-        if oldestOrder != 0 {
-            req["from_message_id"] = 0
-            req["offset"] = 0
-            req["only_local"] = false
-        }
-        TDClient.shared.send(req) { [weak self] resp in
-            guard let self = self else { return }
-            let msgs = tdArray(resp["messages"])
+            "limit": 60
+        ]) { [weak self] resp in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                if tdString(resp["@type"]) == "error" {
+                    self.emptyLabel.text = "Error: " + tdString(resp["message"])
+                    return
+                }
+                let msgs = tdArray(resp["messages"])
                 var entries: [MessageEntry] = []
                 for m in msgs {
-                    if let e = Self.parse(m) {
-                        entries.append(e)
-                    }
+                    if let e = Self.parse(m) { entries.append(e) }
                 }
-                // TDLib returns newest-first
                 entries.reverse()
                 for e in entries where !self.knownIds.contains(e.id) {
                     self.knownIds.insert(e.id)
                     self.messages.append(e)
                 }
-                if let first = msgs.first {
-                    self.oldestOrder = tdInt(first["id"])
-                }
+                self.emptyLabel.text = self.messages.isEmpty ? "No messages yet" : ""
                 self.tableView.reloadData()
                 self.scrollToBottom()
             }
@@ -117,8 +115,11 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         guard let content = tdDict(m["content"]) else { return nil }
         switch tdString(content["@type"]) {
         case "messageText":
+            // content.text is a formattedText OBJECT
+            let formatted = tdDict(content["text"])
+            let body = tdString(formatted?["text"])
             return MessageEntry(id: id, senderId: sender, isOut: isOut,
-                                text: tdString(content["text"]), kind: .text, date: date)
+                                text: body.isEmpty ? "\u{1F516}" : body, kind: .text, date: date)
         case "messagePhoto":
             let photo = tdDict(content["photo"])
             var best: [String: Any]? = nil
@@ -129,9 +130,8 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
                     if area > bestArea { bestArea = area; best = size }
                 }
             }
-            let fileId = tdInt(best?["photo"])
             return MessageEntry(id: id, senderId: sender, isOut: isOut, text: "",
-                                kind: .photo(fileId: fileId,
+                                kind: .photo(fileId: tdInt(best?["photo"]),
                                              width: Int(tdInt(best?["width"])),
                                              height: Int(tdInt(best?["height"]))),
                                 date: date)
@@ -167,6 +167,17 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         tableView.keyboardDismissMode = .interactive
         tableView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tableView)
+
+        emptyLabel.font = .systemFont(ofSize: 15)
+        emptyLabel.textColor = .subText
+        emptyLabel.textAlignment = .center
+        emptyLabel.numberOfLines = 0
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(emptyLabel)
+        NSLayoutConstraint.activate([
+            emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
     }
 
     private func setupInputBar() {
@@ -175,24 +186,31 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         view.addSubview(inputBar)
 
         attachButton.setTitle("\u{1F4CE}", for: .normal)
-        attachButton.titleLabel?.font = .systemFont(ofSize: 24)
+        attachButton.titleLabel?.font = .systemFont(ofSize: 22)
         attachButton.tintColor = .accent
         attachButton.addTarget(self, action: #selector(attachTapped), for: .touchUpInside)
         attachButton.translatesAutoresizingMaskIntoConstraints = false
         inputBar.addSubview(attachButton)
 
-        inputField.borderStyle = .roundedRect
+        inputField.borderStyle = .none
         inputField.placeholder = "Message"
         inputField.font = .systemFont(ofSize: 16)
         inputField.delegate = self
         inputField.backgroundColor = .fieldBackground
         inputField.textColor = .text
+        inputField.layer.cornerRadius = 18
+        let pad = UIView(frame: CGRect(x: 0, y: 0, width: 12, height: 1))
+        inputField.leftView = pad
+        inputField.leftViewMode = .always
         inputField.translatesAutoresizingMaskIntoConstraints = false
         inputBar.addSubview(inputField)
 
         sendButton.setTitle("Send", for: .normal)
-        sendButton.setTitleColor(.accent, for: .normal)
-        sendButton.titleLabel?.font = .boldSystemFont(ofSize: 16)
+        sendButton.setTitleColor(.white, for: .normal)
+        sendButton.backgroundColor = .accent
+        sendButton.titleLabel?.font = .boldSystemFont(ofSize: 14)
+        sendButton.layer.cornerRadius = 18
+        sendButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
         sendButton.addTarget(self, action: #selector(sendTapped), for: .touchUpInside)
         sendButton.translatesAutoresizingMaskIntoConstraints = false
         inputBar.addSubview(sendButton)
@@ -203,18 +221,19 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
             inputBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             inputBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bottomConstraint,
-            inputBar.heightAnchor.constraint(equalToConstant: 56),
+            inputBar.heightAnchor.constraint(equalToConstant: 62),
 
-            attachButton.leadingAnchor.constraint(equalTo: inputBar.leadingAnchor, constant: 10),
+            attachButton.leadingAnchor.constraint(equalTo: inputBar.leadingAnchor, constant: 12),
             attachButton.centerYAnchor.constraint(equalTo: inputBar.centerYAnchor),
 
             inputField.leadingAnchor.constraint(equalTo: attachButton.trailingAnchor, constant: 8),
             inputField.centerYAnchor.constraint(equalTo: inputBar.centerYAnchor),
-            inputField.heightAnchor.constraint(equalToConstant: 38),
+            inputField.heightAnchor.constraint(equalToConstant: 40),
 
-            sendButton.leadingAnchor.constraint(equalTo: inputField.trailingAnchor, constant: 8),
-            sendButton.trailingAnchor.constraint(equalTo: inputBar.trailingAnchor, constant: -10),
-            sendButton.centerYAnchor.constraint(equalTo: inputBar.centerYAnchor)
+            sendButton.leadingAnchor.constraint(equalTo: inputField.trailingAnchor, constant: 10),
+            sendButton.trailingAnchor.constraint(equalTo: inputBar.trailingAnchor, constant: -12),
+            sendButton.centerYAnchor.constraint(equalTo: inputBar.centerYAnchor),
+            sendButton.heightAnchor.constraint(equalToConstant: 36)
         ])
 
         NSLayoutConstraint.activate([
@@ -265,11 +284,87 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
         ])
     }
 
+    // MARK: - Attach
+
     @objc private func attachTapped() {
+        view.endEditing(true)
+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "\u{1F4F7} Photo or Video", style: .default) { [weak self] _ in
+            self?.pickFromGallery()
+        })
+        sheet.addAction(UIAlertAction(title: "\u{1F4C4} File", style: .default) { [weak self] _ in
+            self?.pickFile()
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        // iPad popover anchor
+        sheet.popoverPresentationController?.sourceView = attachButton
+        present(sheet, animated: true)
+    }
+
+    private func pickFromGallery() {
+        let picker = UIImagePickerController()
+        picker.delegate = self
+        picker.mediaTypes = ["public.image", "public.movie"]
+        picker.sourceType = .photoLibrary
+        present(picker, animated: true)
+    }
+
+    private func pickFile() {
         let picker = UIDocumentPickerViewController(documentTypes: ["public.item"], in: .import)
         picker.delegate = self
         picker.allowsMultipleSelection = false
         present(picker, animated: true)
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController,
+                               didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        dismiss(animated: true)
+        if let image = info[.originalImage] as? UIImage,
+           let data = image.jpegData(compressionQuality: 0.85) {
+            let path = FileManager.default.temporaryDirectory.appendingPathComponent("photo_\(Int(Date().timeIntervalSince1970)).jpg")
+            try? data.write(to: path)
+            TDClient.shared.send([
+                "@type": "sendMessage",
+                "chat_id": chatId,
+                "input_message_content": [
+                    "@type": "inputMessagePhoto",
+                    "photo": ["@type": "inputFileLocal", "path": path.path],
+                    "width": Int(image.size.width),
+                    "height": Int(image.size.height)
+                ]
+            ])
+        } else if let url = info[.mediaURL] as? URL {
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+            try? FileManager.default.removeItem(at: tmp)
+            try? FileManager.default.copyItem(at: url, to: tmp)
+            TDClient.shared.send([
+                "@type": "sendMessage",
+                "chat_id": chatId,
+                "input_message_content": [
+                    "@type": "inputMessageVideo",
+                    "video": ["@type": "inputFileLocal", "path": tmp.path]
+                ]
+            ])
+        }
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first else { return }
+        let secured = url.startAccessingSecurityScopedResource()
+        defer { if secured { url.stopAccessingSecurityScopedResource() } }
+
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
+        try? FileManager.default.removeItem(at: tmp)
+        try? FileManager.default.copyItem(at: url, to: tmp)
+
+        TDClient.shared.send([
+            "@type": "sendMessage",
+            "chat_id": chatId,
+            "input_message_content": [
+                "@type": "inputMessageDocument",
+                "document": ["@type": "inputFileLocal", "path": tmp.path]
+            ]
+        ])
     }
 
     // MARK: - Updates
@@ -283,6 +378,7 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
                   let entry = Self.parse(msg), !knownIds.contains(entry.id) else { return }
             knownIds.insert(entry.id)
             messages.append(entry)
+            emptyLabel.text = ""
             tableView.reloadData()
             scrollToBottom()
         case "updateDeleteMessages":
@@ -298,8 +394,8 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
 
     // MARK: - File download
 
-    private func downloadFile(fileId: Int64, for messageId: Int64) {
-        fileDownloads[fileId] = Int(messageId)
+    private func downloadFile(fileId: Int64) {
+        fileDownloads[fileId] = 1
         TDClient.shared.send([
             "@type": "downloadFile",
             "file_id": fileId,
@@ -313,21 +409,12 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
     private func handleFileUpdate(_ update: [String: Any]) {
         guard let file = tdDict(update["file"]) else { return }
         let fileId = tdInt(file["id"])
-        guard fileDownloads[fileId] != nil || isDownloadingPhoto(fileId) else { return }
+        guard fileDownloads[fileId] != nil || photoDownloads.contains(fileId) else { return }
         let local = tdDict(file["local"])
         if let path = local?["path"] as? String, (local?["is_downloading_completed"] as? Bool) == true {
-            DispatchQueue.main.async {
-                self.loadedLocalFiles[fileId] = path
-                self.tableView.reloadData()
-            }
+            loadedLocalFiles[fileId] = path
+            tableView.reloadData()
         }
-    }
-
-    private var loadedLocalFiles: [Int64: String] = [:]
-    private var photoDownloads: Set<Int64> = []
-
-    private func isDownloadingPhoto(_ fileId: Int64) -> Bool {
-        return photoDownloads.contains(fileId)
     }
 
     func localPath(for fileId: Int64) -> String? {
@@ -352,12 +439,9 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
                        localPath: { [weak self] fileId in
                            guard let self = self else { return nil }
                            if let p = self.localPath(for: fileId) { return p }
-                           // trigger download once per fileId
-                           if fileId != 0 && !self.photoDownloads.contains(fileId) && self.fileDownloads[fileId] == nil {
-                               if entry.kind.isMedia {
-                                   self.photoDownloads.insert(fileId)
-                               }
-                               self.downloadFile(fileId: fileId, for: entry.id)
+                           if fileId != 0 && self.fileDownloads[fileId] == nil {
+                               if entry.kind.isMedia { self.photoDownloads.insert(fileId) }
+                               self.downloadFile(fileId: fileId)
                            }
                            return nil
                        },
@@ -376,31 +460,5 @@ final class DialogViewController: UIViewController, UITableViewDataSource, UITab
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         return MessageCell.estimatedHeight(for: messages[indexPath.row], width: tableView.bounds.width)
-    }
-
-    // MARK: - Document picker
-
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let url = urls.first else { return }
-        let secured = url.startAccessingSecurityScopedResource()
-        defer { if secured { url.stopAccessingSecurityScopedResource() } }
-
-        let fm = FileManager.default
-        let tmp = fm.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
-        try? fm.removeItem(at: tmp)
-        try? fm.copyItem(at: url, to: tmp)
-
-        // Wait for TDLib to generate a remote file id for upload
-        TDClient.shared.send([
-            "@type": "sendMessage",
-            "chat_id": chatId,
-            "input_message_content": [
-                "@type": "inputMessageDocument",
-                "document": [
-                    "@type": "inputFileLocal",
-                    "path": tmp.path
-                ]
-            ]
-        ])
     }
 }

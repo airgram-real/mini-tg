@@ -98,9 +98,7 @@ final class MessageCell: UITableViewCell {
         let isOut = entry.isOut
         bubble.backgroundColor = isOut ? .bubbleOut : .bubbleIn
         textLabelInternal.textColor = .text
-        metaLabel.textColor = isOut
-            ? UIColor(hex: 0x4FAE4E).withAlphaComponent(0.7)
-            : UIColor(white: 0, alpha: 0.4).withAlphaComponent(Theme.dark ? 0.7 : 0.4)
+        metaLabel.textColor = UIColor.white.withAlphaComponent(0.55)
         metaLabel.text = timeString(entry.date)
 
         // out/in alignment

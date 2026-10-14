@@ -6,6 +6,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        applyGlobalAppearance()
         window = UIWindow(frame: UIScreen.main.bounds)
         window?.backgroundColor = .tgBackground
 
@@ -14,7 +15,21 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
         appState.bootstrap(window: window!)
         window?.makeKeyAndVisible()
+
+        NotificationCenter.default.addObserver(forName: .themeChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.applyGlobalAppearance()
+        }
         return true
+    }
+
+    private func applyGlobalAppearance() {
+        UINavigationBar.appearance().barStyle = Theme.dark ? .black : .default
+        UINavigationBar.appearance().barTintColor = .navTint
+        UINavigationBar.appearance().isTranslucent = false
+        UINavigationBar.appearance().tintColor = .white
+        UINavigationBar.appearance().titleTextAttributes = [
+            .foregroundColor: Theme.dark ? UIColor.white : UIColor.white
+        ]
     }
 
     func application(_ application: UIApplication,
