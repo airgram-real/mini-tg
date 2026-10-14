@@ -1,8 +1,10 @@
 # MiniTG — минималистичный Telegram-клиент для iOS 12
 
 Собирается на GitHub Actions (macOS-раннер, Mac не нужен).
-Внутри: TDLib + тонкий UIKit-клиент. Вход в приложении (телефон → код → 2FA).
+Внутри: пре-собранный [TDLibFramework](https://github.com/Swiftgram/TDLibFramework) (TDLib 1.8.68, мин. iOS 12) + тонкий UIKit-клиент. Вход в приложении (телефон → код → 2FA).
 api_id/api_hash уже вшиты в исходники (`app/Sources/Globals.swift`).
+
+**Время сборки: ~5–10 минут** (кэш фреймворка между запусками).
 
 ## Как собрать
 
@@ -20,7 +22,7 @@ git push -u origin main
 ```
 
 3. Открой вкладку **Actions** в репо → workflow **Build MiniTG** → нажми **Run workflow**.
-4. Сборка займёт 1–3 часа (TDLib — тяжёлая). По окончании в **Actions → Build MiniTG → <run> → Artifacts** появится **MiniTG-ipa** — скачай и распакуй zip, внутри `MiniTG.ipa`.
+4. Сборка займёт 5–10 минут (первый запуск дольше — скачивается фреймворк). По окончании в **Actions → Build MiniTG → <run> → Artifacts** появится **MiniTG-ipa** — скачай и распакуй zip, внутри `MiniTG.ipa`.
 
 ## Как поставить на iPad
 

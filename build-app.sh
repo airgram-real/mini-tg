@@ -1,43 +1,54 @@
 #!/bin/bash
-# Build the MiniTG iOS app from Swift sources and package an unsigned IPA.
-# Requires: TDLib static tdjson already built at third-party/tdlib-ios
+# Build the MiniTG iOS app from Swift sources using the prebuilt TDLibFramework
+# (Swiftgram TDLib XCFramework, min iOS 12) and package an unsigned IPA.
+# Fast: no TDLib compilation, just download + swiftc + package.
 set -euo pipefail
 
 APP_NAME="MiniTG"
-BUNDLE_ID="com.mini.tg.app"
 ROOT="$PWD"
 APP_DIR="$ROOT/app"
-LIB_DIR="$ROOT/third-party/tdlib-ios"
 WORK="$ROOT/build"
-CPU_COUNT=$(sysctl -n hw.ncpu)
+FW_URL="https://github.com/Swiftgram/TDLibFramework/releases/download/1.8.68-c15d3f5a/TDLibFramework.zip"
+FW_ZIP="$ROOT/third-party/TDLibFramework.zip"
 
-rm -rf "$WORK"
-mkdir -p "$WORK/$APP_NAME.app"
+mkdir -p "$ROOT/third-party" "$WORK"
 
-echo "==> Locating tdjson static library"
-TDJSON_A=$(find "$LIB_DIR" -name "libtdjson.a" | head -1)
-TDJSON_H=$(find "$LIB_DIR" -name "td_json_client.h" | head -1)
-if [ -z "$TDJSON_A" ]; then
-  # some builds install it as libtdjson_static.a
-  TDJSON_A=$(find "$LIB_DIR" -name "libtdjson_static.a" | head -1)
+echo "==> Fetching prebuilt TDLibFramework (cached between runs)"
+if [ ! -f "$FW_ZIP" ]; then
+  curl -L --retry 3 -o "$FW_ZIP" "$FW_URL"
 fi
-if [ -z "$TDJSON_A" ]; then
-  echo "ERROR: libtdjson.a not found in $LIB_DIR" >&2
-  find "$LIB_DIR" -name "*.a" >&2
+
+echo "==> Extracting xcframework"
+rm -rf "$ROOT/third-party/TDLibFramework.xcframework"
+cd "$ROOT/third-party"
+unzip -q -o "$(basename "$FW_ZIP")"
+cd "$ROOT"
+
+FW_PATH=$(find "$ROOT/third-party" -name "TDLibFramework.framework" -path "*ios-arm64*" | head -1)
+if [ -z "$FW_PATH" ]; then
+  FW_PATH=$(find "$ROOT/third-party" -name "TDLibFramework.framework" | grep -v simulator | head -1)
+fi
+if [ -z "$FW_PATH" ]; then
+  echo "ERROR: TDLibFramework.framework (device slice) not found" >&2
+  find "$ROOT/third-party" -maxdepth 3 -name "*.framework" >&2
   exit 1
 fi
-echo "   using: $TDJSON_A"
-mkdir -p "$WORK/include"
-cp "$TDJSON_H" "$WORK/include/td_json_client.h"
+echo "   framework: $FW_PATH"
+FW_DIR=$(dirname "$FW_PATH")
 
-echo "==> Compiling Swift sources (arm64, iOS 12.0), linking static tdjson"
+echo "==> Compiling Swift sources (arm64, iOS 12.0)"
+rm -rf "$WORK/$APP_NAME.app"
+mkdir -p "$WORK/$APP_NAME.app/Frameworks"
+cp -R "$FW_PATH" "$WORK/$APP_NAME.app/Frameworks/"
+
 xcrun -sdk iphoneos swiftc \
   -target arm64-apple-ios12.0 \
   -O -whole-module-optimization \
   -sdk "$(xcrun -sdk iphoneos -show-sdk-path)" \
   -import-objc-header "$APP_DIR/TD-Bridge.h" \
-  -I "$WORK/include" \
-  "$TDJSON_A" \
+  -F "$FW_DIR" \
+  -framework TDLibFramework \
+  -Xlinker -rpath -Xlinker @executable_path/Frameworks \
   $(find "$APP_DIR/Sources" -name "*.swift") \
   -o "$WORK/$APP_NAME.app/$APP_NAME"
 
@@ -45,7 +56,6 @@ echo "==> Assembling bundle"
 cp "$APP_DIR/Info.plist" "$WORK/$APP_NAME.app/Info.plist"
 cp "$APP_DIR/LaunchScreen.storyboard" "$WORK/$APP_NAME.app/LaunchScreen.storyboard"
 
-# Ad-hoc sign so that Sideloadly / ldid can re-sign cleanly
 echo "==> Ad-hoc signing"
 cat > "$WORK/ent.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -53,12 +63,13 @@ cat > "$WORK/ent.plist" <<EOF
 <plist version="1.0">
 <dict>
 	<key>application-identifier</key>
-	<string>*.$BUNDLE_ID</string>
+	<string>*.com.mini.tg.app</string>
 	<key>get-task-allow</key>
 	<true/>
 </dict>
 </plist>
 EOF
+codesign --force --sign - --entitlements "$WORK/ent.plist" "$WORK/$APP_NAME.app/Frameworks/TDLibFramework.framework" || true
 codesign --force --sign - --entitlements "$WORK/ent.plist" "$WORK/$APP_NAME.app" || \
   echo "codesign failed (continuing, Sideloadly will sign)"
 

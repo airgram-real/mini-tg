@@ -1,4 +1,4 @@
-// TDJson C API declarations (linked against libtdjson from TDLib)
+// TDJson C API (new client-id interface) — provided by TDLibFramework
 #ifndef TD_BRIDGE_H
 #define TD_BRIDGE_H
 
@@ -6,11 +6,10 @@
 extern "C" {
 #endif
 
-void *td_json_client_create(void);
-void  td_json_client_send(void *client, const char *request);
-const char *td_json_client_receive(void *client, double timeout);
-const char *td_json_client_execute(void *client, const char *request);
-void  td_json_client_destroy(void *client);
+int32_t td_create_client_id(void);
+void td_send(int32_t client_id, const char *request);
+const char *td_receive(double timeout);
+const char *td_execute(const char *request);
 
 #ifdef __cplusplus
 }

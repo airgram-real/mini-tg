@@ -8,19 +8,17 @@ on:
 jobs:
   build:
     runs-on: macos-14
-    timeout-minutes: 350
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          brew install cmake ninja gperf php || true
-
-      - name: Build TDLib for iOS (arm64)
-        run: |
-          chmod +x tdlib/build-td-ios.sh
-          bash tdlib/build-td-ios.sh
+      - name: Cache prebuilt TDLibFramework
+        id: fwcache
+        uses: actions/cache@v4
+        with:
+          path: third-party
+          key: tdlibframework-1.8.68-c15d3f5a
 
       - name: Build app and package IPA
         run: |
