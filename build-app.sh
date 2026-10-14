@@ -38,9 +38,9 @@ echo "   framework: $FW_PATH"
 FW_DIR=$(dirname "$FW_PATH")
 
 echo "==> Compiling Swift sources (arm64, iOS 12.0)"
+# TDLibFramework is a STATIC library — linked into our binary, not embedded
 rm -rf "$WORK/$APP_NAME.app"
-mkdir -p "$WORK/$APP_NAME.app/Frameworks"
-cp -R "$FW_PATH" "$WORK/$APP_NAME.app/Frameworks/"
+mkdir -p "$WORK/$APP_NAME.app"
 
 xcrun -sdk iphoneos swiftc \
   -target arm64-apple-ios12.0 \
@@ -50,7 +50,6 @@ xcrun -sdk iphoneos swiftc \
   -F "$FW_DIR" \
   -framework TDLibFramework \
   -lz -lc++ \
-  -Xlinker -rpath -Xlinker @executable_path/Frameworks \
   $(find "$APP_DIR/Sources" -name "*.swift") \
   -o "$WORK/$APP_NAME.app/$APP_NAME"
 
@@ -71,7 +70,6 @@ cat > "$WORK/ent.plist" <<EOF
 </dict>
 </plist>
 EOF
-codesign --force --sign - --entitlements "$WORK/ent.plist" "$WORK/$APP_NAME.app/Frameworks/TDLibFramework.framework" || true
 codesign --force --sign - --entitlements "$WORK/ent.plist" "$WORK/$APP_NAME.app" || \
   echo "codesign failed (continuing, Sideloadly will sign)"
 
